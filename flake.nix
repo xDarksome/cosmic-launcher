@@ -35,6 +35,7 @@
               ./po
             ];
           };
+          preBuild = ''export OUT_DIR=$out'';
           nativeBuildInputs = with pkgs; [
             just
             pkg-config
@@ -55,7 +56,6 @@
         cargoArtifacts = craneLib.buildDepsOnly pkgDef;
         cosmic-panel = craneLib.buildPackage (pkgDef // {
           inherit cargoArtifacts;
-          configurePhase = "mesonConfigurePhase"; # Enables Meson for setup
         });
       in {
         checks = {
