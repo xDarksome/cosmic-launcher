@@ -26,28 +26,18 @@ pub fn launcher<I: 'static + Hash + Copy + Send + Sync>(
 
 async fn _launcher<I: Copy>(id: I, state: State) -> (Option<(I, LauncherEvent)>, State) {
     match state {
-        State::Ready => {
-            if let Ok(launcher_ipc) = LauncherIpc::new() {
-                (
-                    Some((id, LauncherEvent::Started(launcher_ipc.get_sender()))),
-                    State::Waiting(launcher_ipc),
-                )
-            } else {
-                (
-                    Some((
-                        id,
-                        LauncherEvent::Error("Failed to start the ipc client".to_string()),
-                    )),
-                    State::Error,
-                )
-            }
-        }
+        State::Ready => LauncherIpc::new()
+            .map(|ipc| {
+                let ev = LauncherEvent::Started(ipc.get_sender());
+                (Some((id, ev)), State::Waiting(ipc))
+            })
+            .unwrap_or_else(|e| {
+                let ev = LauncherEvent::Error(format!("Failed to start the ipc client: {e:?}"));
+                (Some((id, ev)), State::Error)
+            }),
         State::Waiting(mut rx) => {
             if let Some(response) = rx.results().await {
-                (
-                    Some((id, LauncherEvent::Response(response))),
-                    State::Waiting(rx),
-                )
+                (Some((id, LauncherEvent::Response(response))), State::Waiting(rx))
             } else {
                 (
                     Some((
@@ -57,7 +47,7 @@ async fn _launcher<I: Copy>(id: I, state: State) -> (Option<(I, LauncherEvent)>,
                     State::Error,
                 )
             }
-        }
+        },
         State::Error => cosmic::iced::futures::future::pending().await,
     }
 }
@@ -82,17 +72,14 @@ impl LauncherIpc {
                 match req {
                     LauncherRequest::Search(s) => {
                         let _ = ipc_tx.send(Request::Search(s)).await;
-                    }
+                    },
                     LauncherRequest::Activate(i) => {
                         let _ = ipc_tx.send(Request::Activate(i)).await;
-                    }
+                    },
                 }
             }
         });
-        Ok(Self {
-            ipc_rx: Box::pin(ipc_rx),
-            tx,
-        })
+        Ok(Self { ipc_rx: Box::pin(ipc_rx), tx })
     }
 
     pub fn get_sender(&self) -> mpsc::Sender<LauncherRequest> {
