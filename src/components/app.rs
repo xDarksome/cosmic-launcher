@@ -142,28 +142,38 @@ impl Application for CosmicLauncher {
                         path,
                         gpu_preference: _,
                     } => {
-                        if let Ok(bytes) = fs::read_to_string(&path) {
-                            if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
-                                let mut exec = match entry.exec() {
-                                    Some(exec_str) => shlex::Shlex::new(exec_str),
-                                    _ => return Command::none(),
-                                };
-                                let mut cmd = match exec.next() {
-                                    Some(cmd) if !cmd.contains("=") => {
-                                        tokio::process::Command::new(cmd)
-                                    }
-                                    _ => return Command::none(),
-                                };
-                                for arg in exec {
-                                    // TODO handle "%" args?
-                                    if !arg.starts_with("%") {
-                                        cmd.arg(arg);
-                                    }
-                                }
-                                let _ = cmd.spawn();
-                                return Command::perform(async {}, |_| Message::Hide);
+                        log::info!("DesktopEntry: {path:?}");
+
+                        let Ok(bytes) = fs::read_to_string(&path) else {
+                            log::error!("Failed to read desktop entry: {path:?}");  
+                            return Command::none();
+                        };
+
+                        let Ok(entry) = DesktopEntry::decode(&path, &bytes) else  {
+                            log::error!("Failed to decode desktop entry: {path:?}");  
+                            return Command::none();
+                        };
+
+                        let mut exec = match entry.exec() {
+                            Some(exec_str) => shlex::Shlex::new(exec_str),
+                            _ => return Command::none(),
+                        };
+                        let mut cmd = match exec.next() {
+                            Some(cmd) if !cmd.contains("=") => tokio::process::Command::new(cmd),
+                            _ => return Command::none(),
+                        };
+                        for arg in exec {
+                            // TODO handle "%" args?
+                            if !arg.starts_with("%") {
+                                cmd.arg(arg);
                             }
                         }
+
+                        if let Err(e) = cmd.spawn() {
+                            log::error!("Failed to spawn {cmd:?}: {e:?}");
+                        };
+
+                        Command::perform(async {}, |_| Message::Hide);
                     }
                     pop_launcher::Response::Update(mut list) => {
                         list.sort_by(|a, b| {

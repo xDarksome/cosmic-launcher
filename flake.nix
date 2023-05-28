@@ -13,9 +13,13 @@
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    pop-launcher = {
+      url = "github:xDarksome/pop-launcher";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, nix-filter, crane, fenix }:
+  outputs = { self, nixpkgs, flake-utils, nix-filter, crane, fenix, pop-launcher }:
     flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -40,13 +44,14 @@
             just
             pkg-config
             autoPatchelfHook
+            makeWrapper
           ];
           buildInputs = with pkgs; [
             libxkbcommon
             glib
             gtk4
             desktop-file-utils
-           ];
+          ];
           runtimeDependencies = with pkgs; [
             wayland
             libglvnd # For libEGL
@@ -54,18 +59,23 @@
         };
 
         cargoArtifacts = craneLib.buildDepsOnly pkgDef;
-        cosmic-panel = craneLib.buildPackage (pkgDef // {
+        cosmic-launcher = craneLib.buildPackage (pkgDef // {
           inherit cargoArtifacts;
+          
+          postFixup = ''
+            wrapProgram $out/bin/cosmic-launcher \
+              --set PATH "${nixpkgs.lib.makeBinPath [ pop-launcher.packages.${system}.default ]}"
+          '';
         });
       in {
         checks = {
-          inherit cosmic-panel;
+          inherit cosmic-launcher;
         };
 
-        packages.default = cosmic-panel;
+        packages.default = cosmic-launcher;
 
         apps.default = flake-utils.lib.mkApp {
-          drv = cosmic-panel;
+          drv = cosmic-launcher;
         };
 
         devShells.default = pkgs.mkShell rec {
